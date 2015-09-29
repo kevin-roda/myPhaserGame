@@ -1,0 +1,391 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+	<meta charset="UTF-8" />
+	<title>Phaser - Making your first game, part 1</title>
+    <script src="http://cdn.jsdelivr.net/phaser/2.2.2/phaser.min.js"></script>
+    <script src="jquery/jquery-2.1.4.min.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }        
+        canvas { cursor: none; }
+    </style>
+</head>
+<body>
+
+    <script type="text/javascript">
+
+        var game = new Phaser.Game("100", "100", Phaser.AUTO, 'game', { preload: preload, create: create, update: update });
+
+
+        function preload() {
+         game.load.image('sky', 'images/sky.jpg');
+         game.load.image('ground', 'images/platform.png');
+         game.load.image('star', 'images/ball.png');
+         game.load.image('ball', 'images/ball.png');
+         game.load.image('yellowbrick','images/yellowbrick.png');
+         game.load.image('redbrick','images/redbrick.png');
+         game.load.image('bluebrick','images/bluebrick.png');
+
+         //special bricks
+         game.load.image('invisible','images/invisible.png');
+         game.load.image('brick','images/brick.png');
+         game.load.image('brickfissure','images/brick_fissure.png');
+
+         //game objects
+         game.load.image('paddle', 'images/paddle2.png');
+         game.load.spritesheet('balls', 'images/pokeballs3.png', 24, 24,10,10,16);
+
+         //powers
+         game.load.image('throwingPower','images/throw_bricks.png');
+         game.load.image('smallBallPower','images/smallball.png');
+         game.load.image('ballSplitePower','images/ballsplit.png');
+
+     }
+     var ball;
+     var paddle;
+     var bricks;
+     var invisible_bricks;
+
+     var lives = 3;
+     var score = 0;
+
+     var ballOnPaddle = true;
+
+     //sett the powers 
+     var throw_bricks =false;
+
+     var scoreText;
+     var livesText;
+     var introText;
+     var colorBlock;
+
+     function create() {
+
+    //  We're going to be using physics, so enable the Arcade Physics system
+    game.physics.startSystem(Phaser.Physics.ARCADE);
+
+    //  We check bounds collisions against all walls other than the bottom one
+    game.physics.arcade.checkCollision.down = false;
+
+
+    //  A simple background for our game
+    game.add.sprite(0, 0, 'sky');
+    
+    bricks = game.add.group();
+    //  We will enable physics for any object that is created in this group
+    bricks.enableBody = true;
+    bricks.physicsBodyType = Phaser.Physics.ARCADE;
+
+    invisible_bricks = game.add.group();
+    //  We will enable physics for any object that is created in this group
+    invisible_bricks.enableBody = true;
+    invisible_bricks.physicsBodyType = Phaser.Physics.ARCADE;
+    
+    powers = game.add.group();
+    powers.enableBody = true;
+
+    //  Now let's create the map
+    var x = 0;
+    var y = 0;
+    $.get("http://localhost:3000/maps", function(json) {
+        $.each(json, function( index, values ) {
+            y++;
+            x = 0; 
+            var number = 1 + Math.floor(Math.random() * 20); 
+            $.each(values, function( index, value ) {
+                x++;
+
+                switch( value) {
+                    case 'r':
+                    brick = bricks.create(200 + (70 * x),100 + (20 * y) , 'redbrick');
+                    brick.body.immovable = true;        
+                    break;
+                    case 'b':
+                    brick = bricks.create(200 + (70 * x),100 + (20 * y) , 'bluebrick');
+                    brick.body.immovable = true;
+
+                    break;
+                    case 'y':
+                    brick = bricks.create(200 + (70 * x),100 + (20 * y) , 'yellowbrick');
+                    brick.body.immovable = true;
+
+                    break;
+                    case 'i':
+                    brick = invisible_bricks.create(200 + (70 * x),100 + (20 * y) , 'invisible');
+                    brick.body.immovable = true;
+                    brick.state=3;
+                    break;
+                }
+                if (x==number && y ==2 || x==number && y == 4 ) {brick.power="throwing"; };
+                if (x==number && y ==1 || x==number && y == 3 ){brick.power="smallBall"; };
+                brick.power="ballSplite";
+
+
+            });
+
+});
+
+
+});
+
+
+
+    // we set up the paddle
+    paddle = game.add.sprite(game.world.centerX, 900, 'paddle');
+    paddle.anchor.setTo(0.5, 0.5);
+
+    game.physics.enable(paddle, Phaser.Physics.ARCADE);
+
+    paddle.body.collideWorldBounds = true;
+    paddle.body.bounce.set(1);
+    paddle.body.immovable = true;
+
+    //we set up the ball
+
+    ball = game.add.sprite(game.world.centerX, paddle.y - 16, 'balls');
+    ball.anchor.set(0.5);
+    ball.checkWorldBounds = true;
+    // ball.scale.set(4); fait varier la taille
+    ball.smoothed = false;
+    anim = ball.animations.add('turnarround');
+    game.physics.enable(ball, Phaser.Physics.ARCADE);
+    ball.body.collideWorldBounds = true;
+    ball.body.bounce.set(1);
+    ball.events.onOutOfBounds.add(ballLost, this);
+
+
+    //we set up the score text
+    scoreText = game.add.text(32, (game.world.centerY * 2)-50, 'score: 0', { font: "20px Arial", fill: "#ffffff", align: "left" });
+    livesText = game.add.text((game.world.centerX * 2)-100, (game.world.centerY * 2)-50, 'lives: 3', { font: "20px Arial", fill: "#ffffff", align: "left" });
+    introText = game.add.text(game.world.centerX, game.world.centerY, '- click to start -', { font: "40px Arial", fill: "#ffffff", align: "center" });
+    introText.anchor.setTo(0.5, 0.5);
+
+    game.input.onDown.add(releaseBall, this);
+}
+
+function update() {
+
+    paddle.x = game.input.x;
+    if (paddle.x < 24)
+    {
+        paddle.x = 24;
+    }
+    else if (paddle.x > game.width - 24)
+    {
+        paddle.x = game.width - 24;
+    }
+
+    if (ballOnPaddle)
+    {
+        ball.body.x = paddle.x;
+    }
+    else
+    {
+        
+        game.physics.arcade.collide(ball, paddle, ballHitPaddle, null, this);
+        game.physics.arcade.collide(powers,paddle , powerHitPaddle, null, this);
+        if ( throw_bricks ==true) {
+            game.physics.arcade.overlap(ball, bricks, ballHitBrick, null, this);
+            game.physics.arcade.overlap(ball, invisible_bricks, ballHitInvisibleBrick, null, this);
+
+
+        }else{
+            game.physics.arcade.collide(ball, bricks, ballHitBrick, null, this);
+
+            game.physics.arcade.collide(ball, invisible_bricks, ballHitInvisibleBrick, null, this);
+            
+        };
+
+        ball.angle += 1;
+    }
+
+
+}
+
+function releaseBall () {
+
+    if (ballOnPaddle)
+    {
+        ballOnPaddle = false;
+        ball.body.velocity.y = -500;//vitesse boule 
+        ball.body.velocity.x = -75;
+        anim.play(10, true);
+        introText.visible = false;
+    }
+
+}
+
+function ballLost () {
+
+    lives--;
+    livesText.text = 'lives: ' + lives;
+    throw_bricks =false;
+ball.scale.setTo(1,1);
+    if (lives === 0)
+    {
+        gameOver();
+    }
+    else
+    {
+        ballOnPaddle = true;
+
+        ball.reset(paddle.body.x + 16, paddle.y - 16);
+        
+        ball.animations.stop();
+    }
+
+}
+
+function gameOver () {
+
+    ball.body.velocity.setTo(0, 0);
+    
+    introText.text = 'Game Over!';
+    introText.visible = true;
+
+}
+
+function ballHitBrick (_ball, _brick) {
+
+    _brick.kill();
+    score += 10;
+
+    scoreText.text = 'score: ' + score;
+    //  Are they any bricks left?
+    if (bricks.countLiving() == 0)
+    {
+        //  New level starts
+        score += 1000;
+        scoreText.text = 'score: ' + score;
+        introText.text = '- Next Level -';
+
+        //  Let's move the ball back to the paddle
+        ballOnPaddle = true;
+        ball.body.velocity.set(0);
+        ball.x = paddle.x + 16;
+        ball.y = paddle.y - 16;
+        ball.animations.stop();
+
+        //  And bring the bricks back from the dead :)
+bricks.callAll('revive');
+}
+
+switch(_brick.power){
+    case "smallBall":
+
+    var power = powers.create(_brick.x, _brick.y, 'smallBallPower');
+    //  Let gravity do its thing
+    power.body.gravity.y = 100;
+    power.powerName ="smallBallPower";
+    break;
+
+    case "throwing":
+    var power = powers.create(_brick.x, _brick.y, 'throwingPower');
+    //  Let gravity do its thing
+    power.body.gravity.y = 100;
+    power.powerName ="throwingPower";
+    break;
+
+     case "ballSplite":
+    var power = powers.create(_brick.x, _brick.y, 'ballSplitePower');
+    //  Let gravity do its thing
+    power.body.gravity.y = 100;
+    power.powerName ="ballSplitePower";
+    break;
+}
+
+
+
+}
+
+function ballHitInvisibleBrick (_ball, _invisibleBrick) {
+
+   _invisibleBrick.state --;
+   switch( _invisibleBrick.state) {
+    case 2:
+    _invisibleBrick.loadTexture('brick', 0);
+
+    _invisibleBrick.animations.add('change');
+
+    _invisibleBrick.animations.play('change');
+
+    break;
+    case 1:
+    _invisibleBrick.loadTexture('brickfissure', 0);
+
+    _invisibleBrick.animations.add('change');
+
+    _invisibleBrick.animations.play('change');        
+    break;
+    case 0:
+    _invisibleBrick.kill();
+    break;
+}
+
+score += 10;
+
+}
+function powerHitPaddle (_ball, _power) {
+
+_power.kill();
+  
+switch(_power.powerName){
+    case "throwingPower":
+    throw_bricks =true;
+
+    break;
+    case "smallBallPower":
+        ball.scale.setTo(0.5,0.5);
+    break;
+    case "ballSplitePower":
+        var ball2 = game.add.sprite(ball.x, ball.y, ball.generateTexture());
+        ball2.anchor.set(0.5);
+        ball2.checkWorldBounds = true;
+        // ball2.scale.set(4); fait varier la taille
+        ball2.smoothed = false;
+        anim = ball2.animations.add('turnarround');
+        game.physics.enable(ball2, Phaser.Physics.ARCADE);
+        ball2.body.collideWorldBounds = true;
+        ball2.body.bounce.set(1);
+        ball2.events.onOutOfBounds.add(ballLost, this);
+
+    break;
+    // case "":
+    // break;
+}
+}
+
+function ballHitPaddle (_ball, _paddle) {
+
+    var diff = 0;
+
+    if (_ball.x < _paddle.x)
+    {
+        //  Ball is on the left-hand side of the paddle
+        diff = _paddle.x - _ball.x;
+        _ball.body.velocity.x = (-20 * diff);
+    }
+    else if (_ball.x > _paddle.x)
+    {
+        //  Ball is on the right-hand side of the paddle
+        diff = _ball.x -_paddle.x;
+        _ball.body.velocity.x = (20 * diff);
+    }
+    else
+    {
+        //  Ball is perfectly in the middle
+        //  Add a little random X to stop it bouncing straight up!
+        _ball.body.velocity.x = 2 + Math.random() * 8;
+
+
+    }
+
+}
+
+
+</script>
+
+</body>
+</html>
